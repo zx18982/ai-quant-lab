@@ -1,0 +1,535 @@
+# ============================================================
+# 技术指标计算实验 — 规范文件 (Specification)
+# Task 02: Indicator Lab
+# ============================================================
+# 用途：基于中芯国际港股(hk00981)价格数据，计算 RSI、MACD、
+#       布林带、ATR 四个技术指标，以 Jupyter Notebook 展现完整过程。
+# 本 spec 是 notebook 撰写的唯一蓝图，所有实现须严格遵循此文件。
+# ============================================================
+
+metadata:
+  name: "技术指标计算实验"
+  task_id: "task02_indicator_lab"
+  version: "1.0.0"
+  description: "基于中芯国际港股日线数据，计算并可视化 RSI / MACD / 布林带 / ATR 四项技术指标"
+  created_at: "2026-07-04"
+  author: "WorkBuddy"
+  status: "planning"
+
+# ============================================================
+# 一、数据源配置
+# ============================================================
+data_source:
+  stock_name: "中芯国际"
+  stock_code: "hk00981"          # 港股代码
+  market: "HK"                   # 港股
+  currency: "HKD"               # 港元
+  exchange: "港交所"
+
+  # K线参数（与 stock_data_spec.yaml v1.2.0 保持一致）
+  kline:
+    period: "day"                # 日K
+    fq: "qfq"                    # 前复权 — 以最新价为基准向前调整，适合技术分析
+    limit: 250                   # 约1年交易日，足够计算所有指标且有预热空间
+    start_date: null             # 不指定，取最近 250 个交易日
+    end_date: null
+
+  # 数据字段映射（westock-data 输出 → 内部标准字段名）
+  # westock-data kline 返回字段 → 我们使用的标准字段
+  field_mapping:
+    date: "date"                 # 日期
+    open: "open"                 # 开盘价
+    last: "close"                # 收盘价（westock 输出为 last，重命名为 close）
+    high: "high"                 # 最高价
+    low: "low"                   # 最低价
+    volume: "volume"             # 成交量
+    amount: "amount"             # 成交额
+
+  # 数据获取命令
+  command: "westock-data kline hk00981 --period day --fq qfq --limit 250"
+
+  # 备选数据源（若 westock-data 不可用时）
+  fallback:
+    source: "腾讯财经 API"
+    url_template: "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=hk00981,day,{start},{end},640,qfq"
+    note: "outputs/ 目录下已有 smic_0981_hk_daily.csv 可作为离线备份"
+
+# ============================================================
+# 二、指标定义
+# ============================================================
+# 每个指标包含：含义、公式、参数、计算步骤、信号规则、可视化要求
+# ============================================================
+indicators:
+
+  # ----------------------------------------------------------
+  # 1. RSI — 相对强弱指标
+  # ----------------------------------------------------------
+  rsi:
+    name_cn: "相对强弱指标"
+    name_en: "Relative Strength Index"
+    type: "动量震荡指标"           # 指标大类：震荡/趋势/波动率
+    inventor: "J. Welles Wilder Jr. (1978)"
+
+    # 参数
+    parameters:
+      period: 14                  # 计算周期，默认14日
+
+    # 公式（Markdown 格式，notebook 中用 LaTeX 渲染）
+    formula: |
+      Step 1 — 计算每日价格变动：
+        ΔP = Close_t - Close_{t-1}
+
+      Step 2 — 分离涨跌：
+        Gain_t = max(ΔP, 0)
+        Loss_t = max(-ΔP, 0)
+
+      Step 3 — 计算平均涨幅/跌幅（Wilder 平滑法）：
+        首次: AvgGain_14 = mean(Gain_1..14)
+        后续: AvgGain_t = (AvgGain_{t-1} × 13 + Gain_t) / 14
+        （AvgLoss 同理）
+
+      Step 4 — 计算RS：
+        RS = AvgGain / AvgLoss
+
+      Step 5 — 计算RSI：
+        RSI = 100 - 100 / (1 + RS)
+
+      注：当 AvgLoss = 0 时 RSI = 100；当 AvgGain = 0 时 RSI = 0
+
+    # 信号规则
+    signals:
+      overbought: 70              # >70 超买，短期可能回调
+      oversold: 30                # <30 超卖，短期可能反弹
+      centerline: 50              # 50 为多空分界
+      note: "半导体股波动大，可酌情放宽至 80/20"
+
+    # 可视化要求
+    visualization:
+      chart_type: "折线图"
+      y_axis_range: [0, 100]
+      lines:
+        - name: "RSI"
+          color: "#9b59b6"        # 紫色
+          width: 2
+      reference_lines:
+        - value: 70
+          color: "#e74c3c"        # 红色虚线 — 超买线
+          style: "dashed"
+        - value: 50
+          color: "#95a5a6"        # 灰色虚线 — 中轴线
+          style: "dashed"
+        - value: 30
+          color: "#27ae60"        # 绿色虚线 — 超卖线
+          style: "dashed"
+      fill_zones: true            # >70 区域填充浅红，<30 填充浅绿
+      subplots: false             # 独立子图，不叠加在价格上
+
+  # ----------------------------------------------------------
+  # 2. MACD — 指数移动平均收敛/发散指标
+  # ----------------------------------------------------------
+  macd:
+    name_cn: "指数移动平均收敛/发散指标"
+    name_en: "Moving Average Convergence Divergence"
+    type: "趋势跟踪指标"
+    inventor: "Gerald Appel (1979)"
+
+    parameters:
+      fast_period: 12             # 快线EMA周期
+      slow_period: 26             # 慢线EMA周期
+      signal_period: 9            # 信号线EMA周期
+
+    formula: |
+      Step 1 — 计算快线 EMA(12)：
+        EMA_fast_t = α_fast × Close_t + (1 - α_fast) × EMA_fast_{t-1}
+        其中 α_fast = 2 / (12 + 1)
+
+      Step 2 — 计算慢线 EMA(26)：
+        EMA_slow_t = α_slow × Close_t + (1 - α_slow) × EMA_slow_{t-1}
+        其中 α_slow = 2 / (26 + 1)
+
+      Step 3 — 计算 DIF（MACD线）：
+        DIF = EMA_fast - EMA_slow
+
+      Step 4 — 计算 DEA（信号线）：
+        DEA = EMA(DIF, 9)
+
+      Step 5 — 计算柱状图（MACD Histogram）：
+        MACD_Hist = DIF - DEA
+
+      注：EMA 初始值通常取前 N 个收盘价的简单移动平均(SMA)
+
+    signals:
+      golden_cross: "DIF 上穿 DEA → 买入信号"
+      death_cross: "DIF 下穿 DEA → 卖出信号"
+      zero_cross_up: "DIF 上穿零轴 → 趋势转多"
+      zero_cross_down: "DIF 下穿零轴 → 趋势转空"
+      histogram_expansion: "柱状图持续放大 → 动量增强"
+      note: "金叉/死叉需结合趋势位置判断，零轴上方金叉信号更强"
+
+    visualization:
+      chart_type: "双子图叠加"
+      layout:
+        - subplot: "DIF + DEA 折线"
+          lines:
+            - name: "DIF"
+              color: "#e74c3c"    # 红色
+              width: 2
+            - name: "DEA"
+              color: "#f39c12"    # 橙色
+              width: 1.5
+          zero_line: true
+        - subplot: "MACD 柱状图"
+          bar_colors:
+            positive: "#e74c3c"   # 红色（正柱=多头加速）
+            negative: "#27ae60"   # 绿色（负柱=空头加速）
+          zero_line: true
+      subplots: true              # 价格图 + MACD 图（2行布局）
+
+  # ----------------------------------------------------------
+  # 3. Bollinger Bands — 布林带
+  # ----------------------------------------------------------
+  bollinger:
+    name_cn: "布林带"
+    name_en: "Bollinger Bands"
+    type: "波动率通道指标"
+    inventor: "John Bollinger (1980s)"
+
+    parameters:
+      period: 20                  # 中轨SMA周期
+      std_dev: 2                  # 标准差倍数
+
+    formula: |
+      Step 1 — 计算中轨（SMA）：
+        Middle = SMA(Close, 20) = mean(Close_{t-19..t})
+
+      Step 2 — 计算标准差：
+        σ_t = sqrt( Σ(Close_i - Middle_t)² / 20 )   for i in [t-19, t]
+
+      Step 3 — 计算上轨和下轨：
+        Upper = Middle + 2 × σ
+        Lower = Middle - 2 × σ
+
+      Step 4 — 计算带宽（可选）：
+        BandWidth = (Upper - Lower) / Middle × 100%
+
+      Step 5 — 计算 %B（可选）：
+        %B = (Close - Lower) / (Upper - Lower) × 100
+
+    signals:
+      touch_upper: "价格触及/突破上轨 → 短期超买，有回归中轨压力"
+      touch_lower: "价格触及/跌破下轨 → 短期超卖，有回归中轨支撑"
+      squeeze: "带宽收窄至低位 → 波动率压缩，即将方向性突破"
+      bandwidth_expansion: "带宽急剧放大 → 趋势启动/加速"
+      note: "布林带收窄后的突破方向需结合成交量或其他指标确认"
+
+    visualization:
+      chart_type: "价格图叠加通道"
+      lines:
+        - name: "收盘价"
+          color: "#2c3e50"
+          width: 1.5
+        - name: "上轨"
+          color: "#e74c3c"        # 红色
+          width: 1
+        - name: "中轨"
+          color: "#f39c12"        # 橙色
+          width: 1
+          style: "dashed"
+        - name: "下轨"
+          color: "#27ae60"        # 绿色
+          width: 1
+      fill_between: true          # 上下轨之间填充浅色区域
+      subplots: false             # 叠加在价格主图上
+
+  # ----------------------------------------------------------
+  # 4. ATR — 平均真实波幅
+  # ----------------------------------------------------------
+  atr:
+    name_cn: "平均真实波幅"
+    name_en: "Average True Range"
+    type: "波动率度量指标"
+    inventor: "J. Welles Wilder Jr. (1978)"
+
+    parameters:
+      period: 14                  # 计算周期，默认14日
+
+    formula: |
+      Step 1 — 计算每日真实波幅（TR）：
+        TR_t = max(
+          High_t - Low_t,                    # 当日波幅
+          |High_t - Close_{t-1}|,            # 跳空高开
+          |Low_t - Close_{t-1}|              # 跳空低开
+        )
+
+      Step 2 — 计算ATR（Wilder 平滑法）：
+        首次: ATR_14 = mean(TR_1..14)
+        后续: ATR_t = (ATR_{t-1} × 13 + TR_t) / 14
+
+      Step 3 — 动态止损位（可选应用）：
+        Long_Stop = Close_t - 2 × ATR_t      # 多头止损
+        Short_Stop = Close_t + 2 × ATR_t     # 空头止损
+
+    signals:
+      atr_rising: "ATR 上升 → 波动加剧，市场情绪激动，风险增大"
+      atr_falling: "ATR 下降 → 波动收敛，市场趋于平静"
+      atr_extreme_high: "ATR 处于近期高位 → 可能见顶/见底"
+      note: "ATR 不判断方向，仅度量波动幅度。常用于动态止损和仓位管理"
+
+    visualization:
+      chart_type: "折线图"
+      lines:
+        - name: "ATR"
+          color: "#e67e22"        # 深橙色
+          width: 2
+      fill_below: true            # ATR 下方填充浅色区域
+      subplots: true              # 独立子图
+
+# ============================================================
+# 三、Notebook 结构规范
+# ============================================================
+# notebook 命名与章节顺序，每个 section 对应 notebook 中的 cell 组
+# ============================================================
+notebook:
+  filename: "indicator_lab.ipynb"
+  language: "python3"
+  kernel: "python3"
+
+  # 全局设置
+  settings:
+    matplotlib_style: "default"
+    font_family: ["Arial Unicode MS", "PingFang SC", "SimHei"]
+    figure_dpi: 150
+    figure_size: [14, 6]         # 默认图表尺寸
+    color_up: "#e74c3c"          # 涨=红色（中国股市惯例）
+    color_down: "#27ae60"        # 跌=绿色
+
+  # 章节定义（顺序执行）
+  sections:
+
+    - id: "sec_intro"
+      title: "概述与目标"
+      type: "markdown"
+      content: |
+        介绍本 notebook 的目标：基于中芯国际港股(hk00981)日线数据，
+        从零开始计算 RSI、MACD、布林带、ATR 四个技术指标。
+        展示公式推导 → 代码实现 → 可视化 → 信号解读的完整流程。
+
+    - id: "sec_env"
+      title: "环境准备"
+      type: "code"
+      description: "导入依赖库，设置 matplotlib 中文字体和配色"
+      dependencies:
+        - pandas
+        - numpy
+        - matplotlib
+
+    - id: "sec_data_fetch"
+      title: "数据获取"
+      type: "code"
+      description: "调用 westock-data 获取 hk00981 前复权日线数据，解析为 DataFrame"
+      output_variable: "df"
+      columns_required: ["date", "open", "high", "low", "close", "volume"]
+      sort_order: "ascending"      # 按日期升序排列
+      fallback: "若 westock-data 不可用，从 outputs/smic_0981_hk_daily.csv 读取"
+
+    - id: "sec_data_check"
+      title: "数据检查与预处理"
+      type: "code"
+      description: "检查数据完整性、缺失值、数据类型，展示前5行和统计摘要"
+      checks:
+        - "记录数 >= 50（保证指标计算有足够预热期）"
+        - "无缺失日期（节假日除外）"
+        - "close 列无 NaN"
+
+    - id: "sec_rsi"
+      title: "RSI — 相对强弱指标"
+      type: "code"
+      description: "手动实现 RSI(14) 计算，绘制 RSI 图表并标注超买/超卖区域"
+      indicator: "rsi"
+      steps:
+        - "计算每日价格变动 ΔP"
+        - "分离涨跌 Gain / Loss"
+        - "Wilder 平滑法计算 AvgGain / AvgLoss"
+        - "计算 RS 和 RSI"
+        - "绘制 RSI 折线图 + 参考线 + 超买超卖区域填充"
+      output_columns: ["gain", "loss", "avg_gain", "avg_loss", "rs", "rsi"]
+
+    - id: "sec_macd"
+      title: "MACD — 指数移动平均收敛/发散"
+      type: "code"
+      description: "手动实现 MACD(12,26,9) 计算，绘制 DIF/DEA 折线和柱状图"
+      indicator: "macd"
+      steps:
+        - "实现 EMA 函数（支持指定周期和初始值）"
+        - "计算 EMA(12) 和 EMA(26)"
+        - "计算 DIF = EMA(12) - EMA(26)"
+        - "计算 DEA = EMA(DIF, 9)"
+        - "计算 MACD 柱状图 = DIF - DEA"
+        - "绘制双子图：DIF/DEA 折线 + 柱状图"
+      output_columns: ["ema12", "ema26", "dif", "dea", "macd_hist"]
+
+    - id: "sec_bollinger"
+      title: "布林带 — Bollinger Bands"
+      type: "code"
+      description: "手动实现布林带(20,2)计算，绘制价格通道图"
+      indicator: "bollinger"
+      steps:
+        - "计算 20 日 SMA（中轨）"
+        - "计算 20 日标准差"
+        - "计算上轨 = 中轨 + 2σ，下轨 = 中轨 - 2σ"
+        - "计算带宽 BandWidth 和 %B"
+        - "绘制收盘价 + 三条轨道 + 通道填充"
+      output_columns: ["bb_mid", "bb_std", "bb_upper", "bb_lower", "bb_width", "bb_pct"]
+
+    - id: "sec_atr"
+      title: "ATR — 平均真实波幅"
+      type: "code"
+      description: "手动实现 ATR(14) 计算，绘制 ATR 图表"
+      indicator: "atr"
+      steps:
+        - "计算每日 TR（三个值取最大）"
+        - "Wilder 平滑法计算 ATR(14)"
+        - "计算动态止损位（2×ATR）"
+        - "绘制 ATR 折线图 + 填充区域"
+      output_columns: ["tr", "atr", "stop_long", "stop_short"]
+
+    - id: "sec_combined"
+      title: "综合面板：四指标联动可视化"
+      type: "code"
+      description: "将价格图 + 四个指标组合成多行面板，展示同一时段的联动关系"
+      layout: "4行 × 1列（价格/RSI/MACD/ATR）或 2×2 网格"
+      note: "布林带叠加在价格主图上"
+
+    - id: "sec_summary"
+      title: "结果总结与信号解读"
+      type: "markdown"
+      content: |
+        汇总四个指标的计算结果，解读最近交易日的信号状态，
+        给出综合判断（超买/超卖/趋势方向/波动水平）。
+        包含免责声明。
+
+# ============================================================
+# 四、可视化规范
+# ============================================================
+visualization:
+  engine: "matplotlib"
+  style: "default"
+
+  # 配色方案（遵循中国股市惯例：涨红跌绿）
+  colors:
+    up: "#e74c3c"                # 涨 — 红色
+    down: "#27ae60"               # 跌 — 绿色
+    neutral: "#3498db"            # 中性 — 蓝色
+    accent_1: "#f39c12"           # 辅色1 — 橙色
+    accent_2: "#9b59b6"           # 辅色2 — 紫色
+    accent_3: "#e67e22"           # 辅色3 — 深橙
+    grid: "#ecf0f1"               # 网格线 — 浅灰
+    text: "#2c3e50"               # 文字 — 深灰蓝
+
+  # 图表规范
+  figure:
+    default_size: [14, 6]
+    dpi: 150
+    title_fontsize: 14
+    title_fontweight: "bold"
+    label_fontsize: 11
+    legend_fontsize: 10
+    grid_alpha: 0.3
+    rotation: 30                  # X轴标签旋转角度
+
+  # 输出
+  save_figures: true
+  figure_format: "png"
+  figure_dir: "task02_indicator_lab/figures"
+
+# ============================================================
+# 五、输出规范
+# ============================================================
+output:
+  # notebook 文件
+  notebook:
+    path: "task02_indicator_lab/indicator_lab.ipynb"
+    execute: false                # spec 阶段不执行，仅规划
+
+  # 计算后的数据（可选导出）
+  data_export:
+    enabled: true
+    format: "csv"
+    path: "task02_indicator_lab/data/hk00981_indicators.csv"
+    columns:
+      - "date"
+      - "open"
+      - "high"
+      - "low"
+      - "close"
+      - "volume"
+      - "rsi"
+      - "dif"
+      - "dea"
+      - "macd_hist"
+      - "bb_upper"
+      - "bb_mid"
+      - "bb_lower"
+      - "bb_width"
+      - "atr"
+
+  # 图表文件
+  figures:
+    - "rsi_chart.png"
+    - "macd_chart.png"
+    - "bollinger_chart.png"
+    - "atr_chart.png"
+    - "combined_panel.png"
+
+# ============================================================
+# 六、实现约束与规范
+# ============================================================
+constraints:
+  # 纯手动实现，不使用现成库
+  implementation_rule: |
+    所有指标必须从公式手动实现，禁止使用 talib / pandas_ta 等
+    第三方技术分析库。目的是展现计算过程的理解，而非调用黑盒。
+    允许使用 pandas (rolling/ewm) 和 numpy 作为基础计算工具。
+
+  # EMA 初始化方式
+  ema_init: "SMA"                 # EMA 初始值取前 N 个收盘价的简单移动平均
+
+  # Wilder 平滑 vs SMA 平滑
+  smoothing_method: "wilder"      # RSI 和 ATR 使用 Wilder 平滑法（非简单SMA）
+
+  # 数据对齐
+  alignment: "所有指标与原始价格数据按日期对齐，NaN 填充预热期"
+
+  # 数值精度
+  decimal_places: 4               # 计算保留4位小数，显示保留2位
+
+# ============================================================
+# 七、验收标准
+# ============================================================
+acceptance_criteria:
+  - "notebook 可从头到尾无错运行"
+  - "四个指标均手动实现，无第三方 TA 库依赖"
+  - "每个指标有公式说明（Markdown cell）→ 代码实现 → 可视化图表"
+  - "RSI 数值范围在 [0, 100]，超买/超卖线正确标注"
+  - "MACD 金叉死叉点可在图中辨识"
+  - "布林带上下轨对称包围价格，带宽变化可见"
+  - "ATR 值为正数，反映波动幅度"
+  - "所有图表使用中文标题和标签，涨红跌绿配色"
+  - "综合面板图展示四指标联动"
+  - "结尾有信号解读和免责声明"
+
+# ============================================================
+# 八、依赖与命令
+# ============================================================
+dependencies:
+  python: ">=3.11"
+  packages:
+    - pandas
+    - numpy
+    - matplotlib
+  system:
+    - "westock-data CLI（数据获取）"
+
+commands:
+  data_fetch: "westock-data kline hk00981 --period day --fq qfq --limit 250"
+  run_notebook: "jupyter notebook task02_indicator_lab/indicator_lab.ipynb"
