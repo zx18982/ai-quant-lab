@@ -1,0 +1,184 @@
+# 股票数据取数规范配置文件
+# Stock Data Retrieval Specification Configuration
+# 版本: 1.0.0
+# 创建日期: 2026-07-04
+
+metadata:
+  name: "股票数据取数规范"
+  version: "1.2.0"
+  description: "规范化股票数据获取工作的配置文件，支持A股/港股多市场多维度数据查询（含复权）"
+  created_at: "2026-07-04"
+  updated_at: "2026-07-04"
+  author: "WorkBuddy"
+
+# ==================== 股票列表配置 ====================
+# 每个上市地作为独立条目，通过 group 字段关联同公司A股/港股
+# market: A=A股  HK=港股  US=美股
+# currency: A股=人民币  HK=港元  US=美元
+stocks:
+  # ---------- 中芯国际 ----------
+  - name: "中芯国际"
+    code: "sh688981"
+    market: "A"
+    currency: "CNY"
+    group: "中芯国际"
+    industry: "半导体"
+    category: "科技"
+    
+  - name: "中芯国际"
+    code: "hk00981"
+    market: "HK"
+    currency: "HKD"
+    group: "中芯国际"
+    industry: "半导体"
+    category: "科技"
+    
+  # ---------- 比亚迪 ----------
+  - name: "比亚迪"
+    code: "sz002594"
+    market: "A"
+    currency: "CNY"
+    group: "比亚迪"
+    industry: "新能源汽车"
+    category: "制造业"
+    
+  - name: "比亚迪股份"
+    code: "hk01211"
+    market: "HK"
+    currency: "HKD"
+    group: "比亚迪"
+    industry: "新能源汽车"
+    category: "制造业"
+    
+  # ---------- 长江电力 ----------
+  - name: "长江电力"
+    code: "sh600900"
+    market: "A"
+    currency: "CNY"
+    group: "长江电力"
+    industry: "电力"
+    category: "公用事业"
+    # 注: 长江电力仅在A股上市，无港股 counterpart
+
+# ==================== 数据维度配置 ====================  
+data_dimensions:
+  # 实时行情数据
+  quote:
+    enabled: true
+    description: "实时行情数据，包括价格、涨跌幅、成交量等"
+    fields:
+      - "price"           # 当前价
+      - "prev_close"       # 昨收价
+      - "open"            # 开盘价
+      - "high"            # 最高价
+      - "low"             # 最低价
+      - "volume"          # 成交量
+      - "amount"          # 成交额
+      - "change_percent"  # 涨跌幅
+      - "pe_ratio"        # 市盈率
+      - "pb_ratio"        # 市净率
+      - "total_market_cap" # 总市值
+      
+  # K线数据
+  kline:
+    enabled: true
+    description: "历史K线数据（复权后）"
+    period: "day"         # 周期: day/week/month/season/year
+    fq: "qfq"             # 复权类型: qfq=前复权 / hfq=后复权 / bfq=不复权
+    limit: 30             # 获取天数
+    start_date: null       # 开始日期 (可选)
+    end_date: null         # 结束日期 (可选)
+    fields:
+      - "date"
+      - "open"
+      - "last"           # 收盘价
+      - "high"
+      - "low"
+      - "volume"
+      - "amount"
+      
+  # 财务数据
+  finance:
+    enabled: true
+    description: "财务报表数据"
+    report_type: ["lrb", "zcfz", "xjll"]  # 利润表、资产负债表、现金流量表
+    fields:
+      lrb:  # 利润表
+        - "OperatingRevenue"     # 营业收入
+        - "OperatingProfit"      # 营业利润
+        - "NPParentCompanyOwners" # 净利润
+        - "BasicEPS"            # 基本每股收益
+      zcfz:  # 资产负债表
+        - "TotalAssets"         # 总资产
+        - "TotalLiability"      # 总负债
+        - "TotalShareholderEquity" # 股东权益
+      xjll:  # 现金流量表
+        - "NetOperateCashFlow"  # 经营活动现金流
+        - "NetInvestCashFlow"   # 投资活动现金流
+        - "NetFinanceCashFlow"  # 筹资活动现金流
+        
+  # 新闻公告
+  news:
+    enabled: true
+    description: "新闻和公告数据"
+    limit: 10
+    types: ["article", "notice"]  # 新闻文章、公告
+    
+  # 风险事件
+  risk:
+    enabled: false  # 默认关闭，按需开启
+    description: "风险事件数据"
+
+# ==================== 输出配置 ====================      
+output:
+  format: "csv"  # 输出格式: csv/json/excel
+  encoding: "utf-8"
+  directory: "./outputs/stock_data"
+  file_naming:
+    pattern: "{stock_code}_{data_type}_{date}.{format}"
+    example: "sh688981_quote_2026-07-04.csv"
+    
+# ==================== 执行配置 ====================  
+execution:
+  mode: "sequential"  # 执行模式: sequential(顺序)/parallel(并行)
+  retry:
+    max_attempts: 3
+    delay_seconds: 2
+  timeout_seconds: 30
+  
+# ==================== 数据获取命令模板 ====================
+command_templates:
+  search: "westock-data search {stock_name}"
+  quote: "westock-data quote {stock_code}"
+  kline: "westock-data kline {stock_code} --period {period} --fq {fq} --limit {limit}"
+  finance: "westock-data finance {stock_code}"
+  news: "westock-data news article {stock_code} --limit {limit}"
+  notice: "westock-data notice list {stock_code} --limit {limit}"
+
+# ==================== 使用说明 ====================  
+# 使用方法:
+# 1. 修改 stocks 列表，添加或删除要跟踪的股票（每个上市地为独立条目）
+# 2. 配置 data_dimensions，选择需要获取的数据维度
+# 3. 配置 output，指定输出格式和路径
+# 4. 运行数据获取脚本: python fetch_stock_data.py --config stock_data_spec.yaml
+#
+# 注意事项:
+# - 股票代码格式: sh开头=上海, sz开头=深圳, hk开头=港股, us开头=美股
+# - 货币单位: A股=人民币, 港股=港元, 美股=美元 (禁止混用)
+# - K线复权: qfq=前复权(以最新价为基准向前调整) / hfq=后复权(以最初价为基准向后调整) / bfq=不复权
+# - K线数据支持日期范围查询: --start YYYY-MM-DD --end YYYY-MM-DD
+# - 期货/外汇不支持复权（--fq 对它们无效）
+# - 财务数据每季度更新，最新数据通常在季度结束后1-2个月发布
+# - 港股财报字段可能与A股有差异，部分字段可能缺失
+# - 同公司多市场数据通过 group 字段关联，便于AH溢价等跨市场分析
+
+# ==================== 扩展配置 ====================  
+# 可选: 添加更多股票
+# stocks:
+#   - name: "宁德时代"
+#     code: "sz300750"
+#     market: "A"
+#     currency: "CNY"
+#     group: "宁德时代"
+#     industry: "新能源"
+#     category: "制造业"
