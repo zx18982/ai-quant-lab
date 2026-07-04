@@ -1,0 +1,64 @@
+{
+  "stocks": [
+    {
+      "code": "hk00981",
+      "name": "中芯国际",
+      "market": "HK",
+      "currency": "HKD",
+      "group": "中芯国际",
+      "data_file": "hk00981_daily.json",
+      "data_count": 250,
+      "first_date": "2025-06-26",
+      "last_date": "2026-07-03",
+      "last_close": 77.6
+    },
+    {
+      "code": "sh688981",
+      "name": "中芯国际",
+      "market": "A",
+      "currency": "CNY",
+      "group": "中芯国际",
+      "data_file": "sh688981_daily.json",
+      "data_count": 250,
+      "first_date": "2025-06-16",
+      "last_date": "2026-07-03",
+      "last_close": 140.31
+    },
+    {
+      "code": "sz002594",
+      "name": "比亚迪",
+      "market": "A",
+      "currency": "CNY",
+      "group": "比亚迪",
+      "data_file": "sz002594_daily.json",
+      "data_count": 250,
+      "first_date": "2025-06-24",
+      "last_date": "2026-07-03",
+      "last_close": 88.47
+    },
+    {
+      "code": "hk01211",
+      "name": "比亚迪股份",
+      "market": "HK",
+      "currency": "HKD",
+      "group": "比亚迪",
+      "data_file": "hk01211_daily.json",
+      "data_count": 250,
+      "first_date": "2025-06-26",
+      "last_date": "2026-07-03",
+      "last_close": 84.1
+    },
+    {
+      "code": "sh600900",
+      "name": "长江电力",
+      "market": "A",
+      "currency": "CNY",
+      "group": "长江电力",
+      "data_file": "sh600900_daily.json",
+      "data_count": 250,
+      "first_date": "2025-06-24",
+      "last_date": "2026-07-03",
+      "last_close": 27.05
+    }
+  ]
+}

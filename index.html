@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>技术指标实验室 · Stock Indicator Lab</title>
+  <link rel="stylesheet" href="css/style.css">
+  <!-- ECharts CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+</head>
+<body>
+<div class="app-container">
+
+  <!-- ==================== 顶栏 ==================== -->
+  <header class="topbar">
+    <div class="topbar-logo">
+      <span class="logo-icon">📊</span>
+      <span>技术指标实验室</span>
+    </div>
+
+    <div class="topbar-divider"></div>
+
+    <div class="stock-selector-wrapper">
+      <label>股票</label>
+      <select id="stock-selector">
+        <option value="">加载中...</option>
+      </select>
+    </div>
+
+    <div class="time-range-group">
+      <button class="time-range-btn" data-range="1m">1月</button>
+      <button class="time-range-btn" data-range="3m">3月</button>
+      <button class="time-range-btn" data-range="6m">6月</button>
+      <button class="time-range-btn active" data-range="1y">1年</button>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="btn" id="btn-export" title="导出当前指标计算结果为CSV">
+        📥 导出CSV
+      </button>
+      <button class="btn btn-primary" id="btn-reset" title="恢复所有指标参数为默认值">
+        ↻ 重置参数
+      </button>
+    </div>
+  </header>
+
+  <!-- ==================== 主区域 ==================== -->
+  <div class="main-area">
+
+    <!-- ---- 左侧控制面板 ---- -->
+    <aside class="control-panel">
+
+      <!-- 股票信息卡 -->
+      <div class="stock-info-card">
+        <div class="info-name" id="info-name">—</div>
+        <div class="info-code" id="info-code">—</div>
+        <div class="info-price-row">
+          <span class="info-price" id="info-price">—</span>
+          <span class="info-change" id="info-change">—</span>
+        </div>
+        <div class="info-data" id="info-data">—</div>
+      </div>
+
+      <!-- 指标开关 -->
+      <div class="indicator-toggles">
+        <div class="section-title">指标开关</div>
+
+        <label class="indicator-toggle">
+          <input type="checkbox" data-indicator="bollinger" checked>
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">布林带</span>
+          <span class="toggle-desc">波动率通道</span>
+        </label>
+
+        <label class="indicator-toggle">
+          <input type="checkbox" data-indicator="rsi" checked>
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">RSI</span>
+          <span class="toggle-desc">相对强弱</span>
+        </label>
+
+        <label class="indicator-toggle">
+          <input type="checkbox" data-indicator="macd" checked>
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">MACD</span>
+          <span class="toggle-desc">趋势跟踪</span>
+        </label>
+
+        <label class="indicator-toggle">
+          <input type="checkbox" data-indicator="atr" checked>
+          <span class="toggle-switch"></span>
+          <span class="toggle-label">ATR</span>
+          <span class="toggle-desc">波动率度量</span>
+        </label>
+      </div>
+
+      <!-- 参数面板 -->
+      <div class="param-section">
+
+        <!-- 布林带参数 -->
+        <div class="param-group" data-indicator="bollinger">
+          <div class="param-group-header">
+            <span class="arrow"></span>
+            <span class="group-name">布林带参数</span>
+            <span class="group-badge">价格叠加</span>
+          </div>
+          <div class="param-group-body">
+            <div class="slider-item">
+              <div class="slider-header">
+                <span class="slider-label">周期</span>
+                <span class="slider-value" id="bb-period-val">20</span>
+              </div>
+              <input type="range" id="bb-period" data-indicator="bollinger" data-param="period"
+                     min="5" max="100" step="1" value="20">
+              <div class="slider-range"><span>5</span><span>100</span></div>
+            </div>
+            <div class="slider-item">
+              <div class="slider-header">
+                <span class="slider-label">标准差倍数</span>
+                <span class="slider-value" id="bb-stddev-val">2.0</span>
+              </div>
+              <input type="range" id="bb-stddev" data-indicator="bollinger" data-param="std_dev"
+                     min="0.5" max="4.0" step="0.1" value="2.0">
+              <div class="slider-range"><span>0.5</span><span>4.0</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RSI 参数 -->
+        <div class="param-group" data-indicator="rsi">
+          <div class="param-group-header">
+            <span class="arrow"></span>
+            <span class="group-name">RSI 参数</span>
+            <span class="group-badge">0~100</span>
+          </div>
+          <div class="param-group-body">
+            <div class="slider-item">
+              <div class="slider-header">
+                <span class="slider-label">周期</span>
+                <span class="slider-value" id="rsi-period-val">14</span>
+              </div>
+              <input type="range" id="rsi-period" data-indicator="rsi" data-param="period"
+                     min="2" max="50" step="1" value="14">
+              <div class="slider-range"><span>2</span><span>50</span></div>
+            </div>
+            <div class="slider-item">
+              <div class="slider-header">
+                <span class="slider-label">超买线</span>
+                <span class="slider-value" id="rsi-overbought-val">70</span>
+              </div>
+              <input type="range" id="rsi-overbought" data-indicator="rsi" data-param="overbought"
+                     min="50" max="90" step="1" value="70">
+              <div class="slider-range"><span>50</span><span>90</span></div>
+              <div class="constraint-hint"></div>
+            </div>
+            <div class="slider-item">
+              <div class="slider-header">
+                <span class="slider-label">超卖线</span>
+                <span class="slider-value" id="rsi-oversold-val">30</span>
+              </div>
+              <input type="range" id="rsi-oversold" data-indicator="rsi" data-param="oversold"
+                     min="10" max="50" step="1" value="30">
+              <div class="slider-range"><span>10</span><span>50</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MACD 参数 -->
+        <div class="param-group" data-indicator="macd">
+          <div class="param-group-header">
+            <span class="arrow"></span>
+            <span class="group-name">MACD 参数</span>
+            <span class="group-badge">12/26/9</span>
+          </div>
+          <div class="param-group-body">
+            <div class="slider-item">
+              <div class="slider-header">
+                <span class="slider-label">快线周期</span>
+                <span class="slider-value" id="macd-fast-val">12</span>
+              </div>
+              <input type="range" id="macd-fast" data-indicator="macd" data-param="fast_period"
+                     min="2" max="50" step="1" value="12">
+              <div class="slider-range"><span>2</span><span>50</span></div>
+            </div>
+            <div class="slider-item">
+              <div class="slider-header">
+                <span class="slider-label">慢线周期</span>
+                <span class="slider-value" id="macd-slow-val">26</span>
+              </div>
+              <input type="range" id="macd-slow" data-indicator="macd" data-param="slow_period"
+                     min="5" max="100" step="1" value="26">
+              <div class="slider-range"><span>5</span><span>100</span></div>
+              <div class="constraint-hint"></div>
+            </div>
+            <div class="slider-item">
+              <div class="slider-header">
+                <span class="slider-label">信号线周期</span>
+                <span class="slider-value" id="macd-signal-val">9</span>
+              </div>
+              <input type="range" id="macd-signal" data-indicator="macd" data-param="signal_period"
+                     min="2" max="50" step="1" value="9">
+              <div class="slider-range"><span>2</span><span>50</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ATR 参数 -->
+        <div class="param-group" data-indicator="atr">
+          <div class="param-group-header">
+            <span class="arrow"></span>
+            <span class="group-name">ATR 参数</span>
+            <span class="group-badge">波动率</span>
+          </div>
+          <div class="param-group-body">
+            <div class="slider-item">
+              <div class="slider-header">
+                <span class="slider-label">周期</span>
+                <span class="slider-value" id="atr-period-val">14</span>
+              </div>
+              <input type="range" id="atr-period" data-indicator="atr" data-param="period"
+                     min="2" max="50" step="1" value="14">
+              <div class="slider-range"><span>2</span><span>50</span></div>
+            </div>
+            <div class="slider-item">
+              <div class="slider-header">
+                <span class="slider-label">止损倍数</span>
+                <span class="slider-value" id="atr-stop-val">2.0</span>
+              </div>
+              <input type="range" id="atr-stop" data-indicator="atr" data-param="stop_multiplier"
+                     min="0.5" max="5.0" step="0.1" value="2.0">
+              <div class="slider-range"><span>0.5</span><span>5.0</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 重置按钮 -->
+      <div class="reset-section">
+        <button class="btn" id="btn-reset-bottom" onclick="document.getElementById('btn-reset').click()">
+          ↻ 恢复默认参数
+        </button>
+      </div>
+
+    </aside>
+
+    <!-- ---- 右侧图表区 ---- -->
+    <main class="chart-area">
+      <div id="chart-container"></div>
+      <div class="loading-overlay" id="loading-overlay">
+        <div class="spinner"></div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- ==================== 底栏 ==================== -->
+  <footer class="footer">
+    <span class="footer-source">数据来源: westock-data · 前复权</span>
+    <div class="footer-signals" id="signal-summary">
+      <span class="signal-badge info">加载中...</span>
+    </div>
+    <span class="footer-disclaimer">仅供学习研究，不构成投资建议</span>
+  </footer>
+
+</div>
+
+<!-- ==================== JS ==================== -->
+<script src="js/indicators.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
