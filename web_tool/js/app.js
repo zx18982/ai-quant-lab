@@ -170,8 +170,36 @@ const App = {
     // 更新信号摘要
     this.updateSignalSummary(indicators);
 
+    // 补充诊断（数据质量 + 统计特征）
+    this.renderDiagnosis();
+
     // 更新参数显示
     this.updateParamDisplay();
+  },
+
+  // ============================================================
+  // 补充诊断渲染（数据质量 + 统计特征）
+  // ============================================================
+  renderDiagnosis() {
+    if (!this.currentData || this.currentData.length === 0) return;
+    if (typeof window.Diagnosis === "undefined") return;
+
+    const data = this.currentData;
+    const ctx = {
+      dates: data.map(d => d.date),
+      opens: data.map(d => d.open),
+      highs: data.map(d => d.high),
+      lows: data.map(d => d.low),
+      closes: data.map(d => d.close),
+      volumes: data.map(d => d.volume),
+      code: this.currentStock ? this.currentStock.code : ""
+    };
+
+    try {
+      window.Diagnosis.render("deepAnalysis", ctx);
+    } catch (err) {
+      console.error("补充诊断渲染失败:", err);
+    }
   },
 
   // ============================================================
